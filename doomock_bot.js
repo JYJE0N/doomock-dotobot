@@ -183,14 +183,117 @@ const handleLeaveTimeCheck = (msg) => {
   bot.sendMessage(chatId, `${emoji} ${userName}님의 퇴근까지 ${timeMessage} 남았습니다.${comment}`);
 };
 
+// ==================== 메뉴 시스템 ====================
+const menuCategories = {
+  todo: {
+    title: "📝 할일 관리",
+    commands: [
+      { cmd: "/add [할일]", desc: "새 할일 추가" },
+      { cmd: "/list", desc: "할일 목록 보기" },
+      { cmd: "/done [번호]", desc: "할일 완료 처리" },
+      { cmd: "/delete [번호]", desc: "할일 삭제" }
+    ]
+  },
+  time: {
+    title: "⏰ 시간 관리",
+    commands: [
+      { cmd: "/timer [작업명]", desc: "타이머 시작" },
+      { cmd: "/stop", desc: "타이머 중지" },
+      { cmd: "/remind [분]m [내용]", desc: "리마인더 설정" },
+      { cmd: "/status", desc: "현재 상태 확인" }
+    ]
+  },
+  work: {
+    title: "🏢 퇴근 관리",
+    commands: [
+      { cmd: "/set_work_time 08:30 17:30", desc: "근무시간 설정" },
+      { cmd: "/퇴근", desc: "퇴근까지 남은 시간" },
+      { cmd: "/time2leave", desc: "퇴근까지 남은 시간 (영어)" }
+    ]
+  },
+  fortune: {
+    title: "🔮 운세 기능",
+    commands: [
+      { cmd: "/fortune", desc: "오늘의 종합 운세" },
+      { cmd: "/fortune_work", desc: "업무 운세" },
+      { cmd: "/fortune_party", desc: "회식 운세" },
+      { cmd: "/tarot", desc: "타로카드 운세" }
+    ]
+  }
+};
+
+function createMainMenu() {
+  let menu = "🤖 *doomock_todoBot 메뉴*\n\n";
+  menu += "원하는 카테고리를 선택해주세요:\n\n";
+  
+  Object.keys(menuCategories).forEach(key => {
+    const category = menuCategories[key];
+    menu += `${category.title}\n`;
+    menu += `/menu_${key}\n\n`;
+  });
+  
+  menu += "💡 *빠른 시작*\n";
+  menu += "/add 할일내용 - 바로 할일 추가\n";
+  menu += "/퇴근 - 바로 퇴근시간 확인\n";
+  menu += "/fortune - 바로 운세 확인";
+  
+  return menu;
+}
+
+function createCategoryMenu(categoryKey) {
+  const category = menuCategories[categoryKey];
+  if (!category) return "❌ 존재하지 않는 카테고리입니다.";
+  
+  let menu = `${category.title}\n\n`;
+  
+  category.commands.forEach(command => {
+    menu += `${command.cmd}\n`;
+    menu += `↳ ${command.desc}\n\n`;
+  });
+  
+  menu += "📋 /menu - 메인 메뉴로 돌아가기";
+  
+  return menu;
+}
+
 // ==================== 기본 명령어 ====================
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   const userName = utils.getUserName(msg);
   
   bot.sendMessage(chatId, 
-    `안녕하세요 ${userName}! 할일 관리 봇입니다.\n/help 명령어로 사용법을 확인하세요.`
+    `안녕하세요 ${userName}! 할일 관리 봇입니다.\n/menu 명령어로 메뉴를 확인하세요.`
   );
+});
+
+bot.onText(/\/menu$/, (msg) => {
+  const chatId = msg.chat.id;
+  const menuText = createMainMenu();
+  bot.sendMessage(chatId, menuText, {parse_mode: 'Markdown'});
+});
+
+bot.onText(/\/menu_todo/, (msg) => {
+  const chatId = msg.chat.id;
+  const menuText = createCategoryMenu('todo');
+  bot.sendMessage(chatId, menuText, {parse_mode: 'Markdown'});
+});
+
+bot.onText(/\/menu_time/, (msg) => {
+  const chatId = msg.chat.id;
+  const menuText = createCategoryMenu('time');
+  bot.sendMessage(chatId, menuText, {parse_mode: 'Markdown'});
+});
+
+bot.onText(/\/menu_work/, (msg) => {
+  const chatId = msg.chat.id;
+  const menuText = createCategoryMenu('work');
+  bot.sendMessage(chatId, menuText, {parse_mode: 'Markdown'});
+});
+
+bot.onText(/\/menu_fortune/, (msg) => {
+  const chatId = msg.chat.id;
+  const menuText = createCategoryMenu('fortune');
+  bot.sendMessage(chatId, menuText, {parse_mode: 'Markdown'});
 });
 
 bot.onText(/\/help$/, (msg) => {
@@ -200,35 +303,28 @@ bot.onText(/\/help$/, (msg) => {
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📝 *할일 관리*
-/add [할일] - 새 할일 추가
-/list - 할일 목록 보기
-/done [번호] - 할일 완료
-/delete [번호] - 할일 삭제
-
-⏰ *시간 관리*
-/timer [작업명] - 타이머 시작
-/stop - 타이머 중지
-/remind [분]m [내용] - 리마인더 설정
-/status - 현재 상태 보기
-
-🔮 *운세 기능*
-/fortune - 오늘의 운세
-/fortune_work - 업무 운세
-/fortune_party - 회식 운세
-/tarot - 타로카드 운세
-
-🏢 *퇴근 관리*
-/set_work_time 08:30 17:30 - 근무시간 설정
-/퇴근 또는 /time2leave - 퇴근까지 남은 시간
+🎯 *빠른 시작*
+/menu - 📱 카테고리별 메뉴 (추천!)
+/add 할일내용 - 📝 바로 할일 추가
+/퇴근 - 🏃‍♂️ 바로 퇴근시간 확인
+/fortune - 🔮 바로 운세 확인
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-💡 *사용 예시*
-\`/add 월말 보고서 작성\`
-\`/timer 기획서 작성\`
-\`/set_work_time 08:30 17:30\`
-\`/퇴근\`
+📱 *카테고리별 메뉴*
+/menu_todo - 할일 관리 명령어
+/menu_time - 시간 관리 명령어  
+/menu_work - 퇴근 관리 명령어
+/menu_fortune - 운세 관련 명령어
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 *첫 설정*
+1. /set_work_time 08:30 17:30 (근무시간 설정)
+2. /add 할일내용 (첫 할일 추가)
+3. /fortune (오늘의 운세 확인)
+
+🎯 /menu 명령어를 사용하면 더 편리해요!
   `;
   
   bot.sendMessage(chatId, helpText, {parse_mode: 'Markdown'});
