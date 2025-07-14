@@ -67,75 +67,126 @@ const tarotCards = [
 ];
 
 // ==================== 유틸리티 함수 ====================
-function getUserName(msg) {
-  return msg.from.first_name || "님";
-}
-
-function getUserTodos(chatId) {
-  return todos.filter(todo => todo.chatId === chatId);
-}
-
-function parseTime(timeStr) {
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-    return null;
-  }
-  return { hours, minutes };
-}
-
-function getFortuneScore(userId, category = 'general') {
-  const today = new Date().toDateString();
-  const seed = userId + today + category;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    const char = seed.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return (Math.abs(hash) % 100) + 1;
-}
-
-function getRandomFortune(category, userId) {
-  const categoryFortunes = fortunes[category];
-  if (!categoryFortunes) return "좋은 하루 되세요!";
+const utils = {
+  getUserName: (msg) => msg.from.first_name || "님",
   
-  const today = new Date().toDateString();
-  const seed = userId + today + category;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
-    hash = hash & hash;
+  getUserTodos: (chatId) => todos.filter(todo => todo.chatId === chatId),
+  
+  parseTime: (timeStr) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      return null;
+    }
+    return { hours, minutes };
+  },
+  
+  generateHash: (seed) => {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  },
+  
+  getFortuneScore: (userId, category = 'general') => {
+    const today = new Date().toDateString();
+    const seed = userId + today + category;
+    const hash = utils.generateHash(seed);
+    return (hash % 100) + 1;
+  },
+  
+  getRandomFortune: (category, userId) => {
+    const categoryFortunes = fortunes[category];
+    if (!categoryFortunes) return "좋은 하루 되세요!";
+    
+    const today = new Date().toDateString();
+    const seed = userId + today + category;
+    const hash = utils.generateHash(seed);
+    const index = hash % categoryFortunes.length;
+    return categoryFortunes[index];
+  },
+  
+  getRandomItem: (array, userId, seed = '') => {
+    const today = new Date().toDateString();
+    const combinedSeed = userId + today + seed;
+    const hash = utils.generateHash(combinedSeed);
+    const index = hash % array.length;
+    return array[index];
+  },
+  
+  getTimeToLeave: (workEndTime) => {
+    const now = new Date();
+    const endTime = new Date();
+    endTime.setHours(workEndTime.hours, workEndTime.minutes, 0, 0);
+    const diffMs = endTime - now;
+    return Math.floor(diffMs / (1000 * 60));
+  },
+  
+  formatTimeMessage: (minutes) => {
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return hours > 0 ? `${hours}시간 ${remainingMinutes}분` : `${remainingMinutes}분`;
+  },
+  
+  getLeaveTimeEmoji: (minutes) => {
+    if (minutes <= 30) return { emoji: "🎉", comment: " 거의 다 왔어요!" };
+    if (minutes <= 60) return { emoji: "😊", comment: " 조금만 더!" };
+    if (minutes <= 120) return { emoji: "💪", comment: " 파이팅!" };
+    return { emoji: "⏰", comment: "" };
+  }
+};
+
+// ==================== 퇴근 시간 체크 핸들러 ====================
+const handleLeaveTimeCheck = (msg) => {
+  const chatId = msg.chat.id;
+  const userName = utils.getUserName(msg);
+  
+  const schedule = workSchedules[chatId];
+  if (!schedule) {
+    bot.sendMessage(chatId, "근무시간을 먼저 설정해주세요!\n/set_work_time 08:30 17:30");
+    return;
   }
   
-  const index = Math.abs(hash) % categoryFortunes.length;
-  return categoryFortunes[index];
-}
-
-function getRandomItem(array, userId, seed = '') {
-  const today = new Date().toDateString();
-  const combinedSeed = userId + today + seed;
-  let hash = 0;
-  for (let i = 0; i < combinedSeed.length; i++) {
-    hash = ((hash << 5) - hash) + combinedSeed.charCodeAt(i);
-    hash = hash & hash;
-  }
-  const index = Math.abs(hash) % array.length;
-  return array[index];
-}
-
-function getTimeToLeave(workEndTime) {
   const now = new Date();
-  const endTime = new Date();
-  endTime.setHours(workEndTime.hours, workEndTime.minutes, 0, 0);
+  const currentDay = now.getDay();
   
-  const diffMs = endTime - now;
-  return Math.floor(diffMs / (1000 * 60));
-}
+  // 주말 체크
+  if (currentDay === 0 || currentDay === 6) {
+    const dayName = currentDay === 0 ? '일요일' : '토요일';
+    bot.sendMessage(chatId, `${userName}님, 오늘은 ${dayName}이에요! 쉬세요~ 😊`);
+    return;
+  }
+  
+  const minutesToLeave = utils.getTimeToLeave(schedule.endTime);
+  
+  // 이미 퇴근 시간이 지났는지 체크
+  if (minutesToLeave <= 0) {
+    bot.sendMessage(chatId, `${userName}님, 이미 퇴근 시간이에요! 수고하셨습니다! 🎉`);
+    return;
+  }
+  
+  // 출근 시간 전 체크
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const startTime = schedule.startTime;
+  
+  if (currentHour < startTime.hours || 
+     (currentHour === startTime.hours && currentMinute < startTime.minutes)) {
+    bot.sendMessage(chatId, `${userName}님, 아직 출근 전이에요! ☕`);
+    return;
+  }
+  
+  const timeMessage = utils.formatTimeMessage(minutesToLeave);
+  const { emoji, comment } = utils.getLeaveTimeEmoji(minutesToLeave);
+  
+  bot.sendMessage(chatId, `${emoji} ${userName}님의 퇴근까지 ${timeMessage} 남았습니다.${comment}`);
+};
 
 // ==================== 기본 명령어 ====================
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  const userName = getUserName(msg);
+  const userName = utils.getUserName(msg);
   
   bot.sendMessage(chatId, 
     `안녕하세요 ${userName}! 할일 관리 봇입니다.\n/help 명령어로 사용법을 확인하세요.`
@@ -169,8 +220,7 @@ bot.onText(/\/help$/, (msg) => {
 
 🏢 *퇴근 관리*
 /set_work_time 08:30 17:30 - 근무시간 설정
-/퇴근 - 퇴근까지 남은 시간
-/퇴근시간 - 설정된 퇴근시간 확인
+/퇴근 또는 /time2leave - 퇴근까지 남은 시간
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -202,7 +252,7 @@ bot.onText(/\/add (.+)/, (msg, match) => {
 
 bot.onText(/\/list/, (msg) => {
   const chatId = msg.chat.id;
-  const userTodos = getUserTodos(chatId);
+  const userTodos = utils.getUserTodos(chatId);
 
   if (userTodos.length === 0) {
     bot.sendMessage(chatId, "📝 등록된 할일이 없습니다.\n/add [할일]로 할일을 추가해보세요.");
@@ -221,7 +271,7 @@ bot.onText(/\/list/, (msg) => {
 bot.onText(/\/done (\d+)/, (msg, match) => {
   const chatId = msg.chat.id;
   const todoIndex = parseInt(match[1]) - 1;
-  const userTodos = getUserTodos(chatId);
+  const userTodos = utils.getUserTodos(chatId);
 
   if (todoIndex >= 0 && todoIndex < userTodos.length) {
     userTodos[todoIndex].completed = true;
@@ -234,7 +284,7 @@ bot.onText(/\/done (\d+)/, (msg, match) => {
 bot.onText(/\/delete (\d+)/, (msg, match) => {
   const chatId = msg.chat.id;
   const todoIndex = parseInt(match[1]) - 1;
-  const userTodos = getUserTodos(chatId);
+  const userTodos = utils.getUserTodos(chatId);
 
   if (todoIndex >= 0 && todoIndex < userTodos.length) {
     const deletedTodo = userTodos[todoIndex];
@@ -294,7 +344,7 @@ bot.onText(/\/remind (\d+)m (.+)/, (msg, match) => {
 
 bot.onText(/\/status/, (msg) => {
   const chatId = msg.chat.id;
-  const userTodos = getUserTodos(chatId);
+  const userTodos = utils.getUserTodos(chatId);
   const completedCount = userTodos.filter((todo) => todo.completed).length;
   const pendingCount = userTodos.length - completedCount;
 
@@ -317,11 +367,11 @@ bot.onText(/\/status/, (msg) => {
 bot.onText(/\/fortune$/, (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  const userName = getUserName(msg);
+  const userName = utils.getUserName(msg);
   
-  const generalFortune = getRandomFortune('general', userId);
-  const workFortune = getRandomFortune('work', userId);
-  const luckyColor = getRandomItem(luckyItems.colors, userId, 'color');
+  const generalFortune = utils.getRandomFortune('general', userId);
+  const workFortune = utils.getRandomFortune('work', userId);
+  const luckyColor = utils.getRandomItem(luckyItems.colors, userId, 'color');
   const luckyNumber = Math.floor(Math.random() * 45) + 1;
   
   const message = `
@@ -344,10 +394,10 @@ ${workFortune}
 bot.onText(/\/fortune_work/, (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  const userName = getUserName(msg);
+  const userName = utils.getUserName(msg);
   
-  const workFortune = getRandomFortune('work', userId);
-  const score = getFortuneScore(userId, 'work');
+  const workFortune = utils.getRandomFortune('work', userId);
+  const score = utils.getFortuneScore(userId, 'work');
   
   const message = `
 💼 *${userName}의 업무 운세*
@@ -363,12 +413,12 @@ ${workFortune}
 bot.onText(/\/fortune_party/, (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  const userName = getUserName(msg);
+  const userName = utils.getUserName(msg);
   
-  const partyFortune = getRandomFortune('party', userId);
-  const score = getFortuneScore(userId, 'party');
-  const luckyFood = getRandomItem(luckyItems.foods, userId, 'food');
-  const luckyActivity = getRandomItem(luckyItems.activities, userId, 'activity');
+  const partyFortune = utils.getRandomFortune('party', userId);
+  const score = utils.getFortuneScore(userId, 'party');
+  const luckyFood = utils.getRandomItem(luckyItems.foods, userId, 'food');
+  const luckyActivity = utils.getRandomItem(luckyItems.activities, userId, 'activity');
   
   const message = `
 🍻 *${userName}의 회식 운세*
@@ -390,9 +440,9 @@ ${score >= 80 ? '🎉 완벽한 회식 날이에요!' :
 bot.onText(/\/tarot/, (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  const userName = getUserName(msg);
+  const userName = utils.getUserName(msg);
   
-  const tarotCard = getRandomItem(tarotCards, userId, 'tarot');
+  const tarotCard = utils.getRandomItem(tarotCards, userId, 'tarot');
   
   const message = `
 🎴 *${userName}의 오늘 타로 운세*
@@ -413,8 +463,8 @@ bot.onText(/\/set_work_time (\d{1,2}:\d{2}) (\d{1,2}:\d{2})/, (msg, match) => {
   const startTimeStr = match[1];
   const endTimeStr = match[2];
   
-  const startTime = parseTime(startTimeStr);
-  const endTime = parseTime(endTimeStr);
+  const startTime = utils.parseTime(startTimeStr);
+  const endTime = utils.parseTime(endTimeStr);
   
   if (!startTime || !endTime) {
     bot.sendMessage(chatId, "❌ 시간 형식이 올바르지 않습니다.\n사용법: /set_work_time 08:30 17:30");
@@ -433,83 +483,19 @@ bot.onText(/\/set_work_time (\d{1,2}:\d{2}) (\d{1,2}:\d{2})/, (msg, match) => {
 🌅 출근 시간: ${startTimeStr}
 🌙 퇴근 시간: ${endTimeStr}
 
-/퇴근 명령어로 퇴근까지 남은 시간을 확인하세요!
+/퇴근 또는 /time2leave 명령어로 퇴근까지 남은 시간을 확인하세요!
   `;
   
   bot.sendMessage(chatId, message, {parse_mode: 'Markdown'});
 });
 
-bot.onText(/\/퇴근/, (msg) => {
-  const chatId = msg.chat.id;
-  const userName = getUserName(msg);
-  
-  const schedule = workSchedules[chatId];
-  if (!schedule) {
-    bot.sendMessage(chatId, "근무시간을 먼저 설정해주세요!\n/set_work_time 08:30 17:30");
-    return;
-  }
-  
-  const now = new Date();
-  const currentDay = now.getDay();
-  
-  // 주말 체크
-  if (currentDay === 0 || currentDay === 6) {
-    const dayName = currentDay === 0 ? '일요일' : '토요일';
-    bot.sendMessage(chatId, `${userName}님, 오늘은 ${dayName}이에요! 쉬세요~ 😊`);
-    return;
-  }
-  
-  const minutesToLeave = getTimeToLeave(schedule.endTime);
-  
-  // 이미 퇴근 시간이 지났는지 체크
-  if (minutesToLeave <= 0) {
-    bot.sendMessage(chatId, `${userName}님, 이미 퇴근 시간이에요! 수고하셨습니다! 🎉`);
-    return;
-  }
-  
-  // 출근 시간 전 체크
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const startTime = schedule.startTime;
-  
-  if (currentHour < startTime.hours || 
-     (currentHour === startTime.hours && currentMinute < startTime.minutes)) {
-    bot.sendMessage(chatId, `${userName}님, 아직 출근 전이에요! ☕`);
-    return;
-  }
-  
-  // 시간 변환
-  const hours = Math.floor(minutesToLeave / 60);
-  const minutes = minutesToLeave % 60;
-  
-  let timeMessage;
-  if (hours > 0) {
-    timeMessage = `${hours}시간 ${minutes}분`;
-  } else {
-    timeMessage = `${minutes}분`;
-  }
-  
-  // 상황별 이모지
-  let emoji = "⏰";
-  let comment = "";
-  
-  if (minutesToLeave <= 30) {
-    emoji = "🎉";
-    comment = " 거의 다 왔어요!";
-  } else if (minutesToLeave <= 60) {
-    emoji = "😊";
-    comment = " 조금만 더!";
-  } else if (minutesToLeave <= 120) {
-    emoji = "💪";
-    comment = " 파이팅!";
-  }
-  
-  bot.sendMessage(chatId, `${emoji} ${userName}님의 퇴근까지 ${timeMessage} 남았습니다.${comment}`);
-});
+// 퇴근 시간 체크 (한글/영어 모두 지원)
+bot.onText(/\/퇴근/, handleLeaveTimeCheck);
+bot.onText(/\/time2leave/, handleLeaveTimeCheck);
 
 bot.onText(/\/퇴근시간/, (msg) => {
   const chatId = msg.chat.id;
-  const userName = getUserName(msg);
+  const userName = utils.getUserName(msg);
   
   const schedule = workSchedules[chatId];
   if (!schedule) {
@@ -524,8 +510,8 @@ bot.onText(/\/퇴근시간/, (msg) => {
 // ==================== 기타 ====================
 bot.onText(/\/settings/, (msg) => {
   const chatId = msg.chat.id;
-  const userName = getUserName(msg);
-  const userTodos = getUserTodos(chatId);
+  const userName = utils.getUserName(msg);
+  const userTodos = utils.getUserTodos(chatId);
   const schedule = workSchedules[chatId];
   
   let message = `⚙️ *${userName}의 봇 설정*\n\n`;
