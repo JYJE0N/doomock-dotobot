@@ -225,7 +225,7 @@ class TimerManager {
   }
 }
 
-// ==================== 근무시간 관리 클래스 (🔥 완전히 새로 작성!) ====================
+// ==================== 근무시간 관리 클래스 (완전 수정 버전) ====================
 class WorkTimeManager {
   static getWorkSchedule(chatId) {
     return storage.workSchedules.get(chatId) || {
@@ -254,7 +254,9 @@ class WorkTimeManager {
 
   static getCurrentWorkStatus(chatId) {
     const now = new Date();
-    const currentDay = now.getDay();
+    const currentDay = now.getDay(); // 0=일요일, 1=월요일, ..., 6=토요일
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
     
     // 주말 체크
     if (currentDay === 0 || currentDay === 6) {
@@ -265,15 +267,29 @@ class WorkTimeManager {
     }
 
     const schedule = this.getWorkSchedule(chatId);
-    const currentMinutes = Utils.timeToMinutes({ 
-      hours: now.getHours(), 
-      minutes: now.getMinutes() 
-    });
-    const startMinutes = Utils.timeToMinutes(schedule.startTime);
-    const endMinutes = Utils.timeToMinutes(schedule.endTime);
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+    const startTimeInMinutes = schedule.startTime.hours * 60 + schedule.startTime.minutes;
+    const endTimeInMinutes = schedule.endTime.hours * 60 + schedule.endTime.minutes;
+    
+    // 오전 7시 (420분) 기준
+    const morningStartMinutes = 7 * 60; // 7:00 AM = 420분
 
-    if (currentMinutes < startMinutes) {
-      const minutesToWork = startMinutes - currentMinutes;
+    // 디버그를 위한 정보
+    console.log(`현재시간: ${currentHour}:${currentMinute.toString().padStart(2, '0')} (${currentTimeInMinutes}분)`);
+    console.log(`퇴근시간: ${schedule.endTime.hours}:${schedule.endTime.minutes.toString().padStart(2, '0')} (${endTimeInMinutes}분)`);
+    console.log(`출근시간: ${schedule.startTime.hours}:${schedule.startTime.minutes.toString().padStart(2, '0')} (${startTimeInMinutes}분)`);
+
+    // 🌙 퇴근 후 ~ 다음날 오전 7시: 특별 메시지
+    if (currentTimeInMinutes >= endTimeInMinutes || currentTimeInMinutes < morningStartMinutes) {
+      return { 
+        status: 'afterWork',
+        message: '회사 생각한다고 월급 더 주는 거 아닙니다.'
+      };
+    }
+
+    // 🌅 오전 7시 ~ 출근시간: 출근까지 카운트다운
+    if (currentTimeInMinutes >= morningStartMinutes && currentTimeInMinutes < startTimeInMinutes) {
+      const minutesToWork = startTimeInMinutes - currentTimeInMinutes;
       return { 
         status: 'beforeWork', 
         minutesToWork,
@@ -281,27 +297,19 @@ class WorkTimeManager {
       };
     }
 
-    if (currentMinutes >= endMinutes) {
-      const minutesSinceWork = currentMinutes - endMinutes;
-      const hoursSinceWork = Math.floor(minutesSinceWork / 60);
-      
-      let timeCategory;
-      if (hoursSinceWork <= 2) timeCategory = 'justLeft';
-      else if (hoursSinceWork <= 5) timeCategory = 'evening';
-      else timeCategory = 'late';
-
+    // 💼 근무 중: 퇴근까지 시간
+    if (currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes < endTimeInMinutes) {
+      const minutesToLeave = endTimeInMinutes - currentTimeInMinutes;
       return { 
-        status: 'afterWork', 
-        timeCategory,
-        minutesSinceWork 
+        status: 'working', 
+        minutesToLeave 
       };
     }
 
-    // 근무 중
-    const minutesToLeave = endMinutes - currentMinutes;
+    // 예외 상황 (여기에 도달하면 안 됨)
     return { 
-      status: 'working', 
-      minutesToLeave 
+      status: 'unknown',
+      message: '시간 계산 오류가 발생했습니다.'
     };
   }
 
@@ -315,30 +323,20 @@ class WorkTimeManager {
           { name: userName, userId }
         );
 
+      case 'afterWork':
+        // 🌙 퇴근 후 특별 메시지
+        return `🌙 ${workStatus.message}`;
+
       case 'beforeWork':
+        // 🌅 출근까지 카운트다운
         const timeMessage = Utils.formatTime(workStatus.minutesToWork);
         if (workStatus.isSoon) {
-          return Utils.replacePlaceholders(MESSAGES.work.soon, {
-            name: userName,
-            time: timeMessage
-          });
+          return `⏰ ${userName}님, 곧 출근시간이에요! 출근까지 ${timeMessage}!`;
         }
-        return Utils.getRandomMessage(MESSAGES.work.beforeWork, {
-          name: userName,
-          time: timeMessage,
-          userId
-        });
-
-      case 'afterWork':
-        const messages = workStatus.timeCategory === 'justLeft' 
-          ? MESSAGES.work.afterWork
-          : workStatus.timeCategory === 'evening'
-          ? MESSAGES.work.evening
-          : MESSAGES.work.late;
-        
-        return Utils.getRandomMessage(messages, { name: userName, userId });
+        return `🌅 ${userName}님, 출근까지 ${timeMessage}!`;
 
       case 'working':
+        // 💼 근무 중 - 퇴근까지 시간
         const remainingTime = Utils.formatTime(workStatus.minutesToLeave);
         const emoji = workStatus.minutesToLeave <= 30 ? "🎉" : 
                      workStatus.minutesToLeave <= 60 ? "😊" : 
@@ -350,7 +348,7 @@ class WorkTimeManager {
         return `${emoji} ${userName}님의 퇴근까지 ${remainingTime} 남았습니다!${comment}`;
 
       default:
-        return "❌ 시간 계산 중 오류가 발생했습니다.";
+        return workStatus.message || "❌ 시간 계산 중 오류가 발생했습니다.";
     }
   }
 
@@ -367,7 +365,19 @@ class WorkTimeManager {
       workHours: `${Utils.formatTimeString(schedule.startTime)} ~ ${Utils.formatTimeString(schedule.endTime)}`,
       isDefault: schedule.isDefault,
       status: workStatus.status,
-      details: workStatus
+      details: workStatus,
+      
+      // 추가 디버그 정보
+      currentTimeInMinutes: now.getHours() * 60 + now.getMinutes(),
+      endTimeInMinutes: schedule.endTime.hours * 60 + schedule.endTime.minutes,
+      startTimeInMinutes: schedule.startTime.hours * 60 + schedule.startTime.minutes,
+      morningStartMinutes: 7 * 60, // 오전 7시
+      
+      // 시간 범위 체크
+      isAfterWork: (now.getHours() * 60 + now.getMinutes()) >= (schedule.endTime.hours * 60 + schedule.endTime.minutes),
+      isBeforeMorning: (now.getHours() * 60 + now.getMinutes()) < (7 * 60),
+      isWorkingHours: (now.getHours() * 60 + now.getMinutes()) >= (schedule.startTime.hours * 60 + schedule.startTime.minutes) && 
+                      (now.getHours() * 60 + now.getMinutes()) < (schedule.endTime.hours * 60 + schedule.endTime.minutes)
     };
   }
 }
