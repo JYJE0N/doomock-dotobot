@@ -309,7 +309,8 @@ class WorkTimeManager {
 
     // 퇴근 후 (수정된 부분!)
     if (currentTimeInMinutes >= endTimeInMinutes) {
-      this.handleAfterWork(chatId, userName, userId, endTime, currentHour);
+     // 수정
+    this.handleAfterWork(chatId, userName, userId, endTime, currentTimeInMinutes, endTimeInMinutes);
       return;
     }
 
@@ -341,21 +342,26 @@ class WorkTimeManager {
     }
   }
 
-  static handleAfterWork(chatId, userName, userId, endTime, currentHour) {
-    const hoursSinceWork = currentHour - endTime.hours;
-    
-    let messageCategory;
-    if (hoursSinceWork >= 0 && hoursSinceWork <= 2) {
-      messageCategory = messages.afterWork.justLeft;
-    } else if (hoursSinceWork <= 5) {
-      messageCategory = messages.afterWork.evening;
-    } else {
-      messageCategory = messages.afterWork.late;
-    }
+  static handleAfterWork(chatId, userName, userId, endTime, currentTimeInMinutes, endTimeInMinutes) {
+  // 퇴근 후 경과 시간을 분 단위로 정확히 계산
+  const minutesSinceWork = currentTimeInMinutes - endTimeInMinutes;
+  const hoursSinceWork = Math.floor(minutesSinceWork / 60);
 
-    const message = BotUtils.getRandomMessage(messageCategory, { name: userName, userId });
-    bot.sendMessage(chatId, message);
+  let messageCategory;
+  if (hoursSinceWork >= 0 && hoursSinceWork <= 2) {
+    messageCategory = messages.afterWork.justLeft;
+  } else if (hoursSinceWork <= 5) {
+    messageCategory = messages.afterWork.evening;
+  } else {
+    messageCategory = messages.afterWork.late;
   }
+
+  const message = BotUtils.getRandomMessage(messageCategory, {
+    name: userName,
+    userId,
+  });
+  bot.sendMessage(chatId, message);
+}
 
   static handleDuringWork(chatId, userName, minutesToLeave) {
     const timeMessage = BotUtils.formatTime(minutesToLeave);
