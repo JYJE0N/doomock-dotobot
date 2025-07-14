@@ -20,7 +20,10 @@ bot.setMyCommands([
   { command: '/done', description: '✅ 완료' },
   { command: '/leave', description: '🏃 퇴근체크' },
   { command: '/time', description: '⏰ 타이머' },
-  { command: '/stop', description: '🛑 중지' }
+  { command: '/stop', description: '🛑 중지' },
+  { command: '/fortune', description: '🔮 오늘의 운세' },
+  { command: '/status', description: '📊 상태 보기' },
+  { command: '/help', description: '❓ 도움말' }
 ]);
 
 
