@@ -12,6 +12,18 @@ const CONFIG = {
 // ==================== 봇 초기화 ====================
 const bot = new TelegramBot(CONFIG.BOT_TOKEN, { polling: true });
 
+// ========== 👇 여기! ===========
+bot.setMyCommands([
+  { command: '/menu', description: '📱 메뉴' },
+  { command: '/add', description: '📝 추가' },
+  { command: '/list', description: '📋 목록' },
+  { command: '/done', description: '✅ 완료' },
+  { command: '/leave', description: '🏃 퇴근체크' },
+  { command: '/time', description: '⏰ 타이머' },
+  { command: '/stop', description: '🛑 중지' }
+]);
+
+
 // ==================== 데이터 저장소 ====================
 const storage = {
   todos: new Map(),        // chatId -> todo 배열
