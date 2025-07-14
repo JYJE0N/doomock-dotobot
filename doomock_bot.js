@@ -225,7 +225,7 @@ class TimerManager {
   }
 }
 
-// ==================== 근무시간 관리 클래스 (완전 수정 버전) ====================
+// ==================== 근무시간 관리 클래스 (v3 버전) ====================
 class WorkTimeManager {
   static getWorkSchedule(chatId) {
     return storage.workSchedules.get(chatId) || {
