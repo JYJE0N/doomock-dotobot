@@ -289,17 +289,16 @@ class MenuManager {
   }
 }
 
-// ==================== 퇴근 관리 클래스 (통합된 버전) ====================
+// 수정된 WorkTimeManager 클래스
 class WorkTimeManager {
   static getUserWorkSchedule(chatId) {
-    // 개인 설정이 있으면 사용, 없으면 기본값 사용
     if (workSchedules[chatId]) {
       return workSchedules[chatId];
     }
     return {
       startTime: WORK_SCHEDULE.START_TIME,
       endTime: WORK_SCHEDULE.END_TIME,
-      isDefault: true,
+      isDefault: true
     };
   }
 
@@ -315,11 +314,8 @@ class WorkTimeManager {
 
     // 주말 체크
     if (currentDay === 0 || currentDay === 6) {
-      const dayType = currentDay === 0 ? "sunday" : "saturday";
-      const message = BotUtils.getRandomMessage(messages.weekend[dayType], {
-        name: userName,
-        userId,
-      });
+      const dayType = currentDay === 0 ? 'sunday' : 'saturday';
+      const message = BotUtils.getRandomMessage(messages.weekend[dayType], { name: userName, userId });
       bot.sendMessage(chatId, message);
       return;
     }
@@ -329,47 +325,52 @@ class WorkTimeManager {
     const startTime = schedule.startTime;
     const endTime = schedule.endTime;
 
+    // 현재 시간이 출근 전인지 확인
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+    const startTimeInMinutes = startTime.hours * 60 + startTime.minutes;
+    const endTimeInMinutes = endTime.hours * 60 + endTime.minutes;
+
     // 출근 전
-    if (
-      currentHour < startTime.hours ||
-      (currentHour === startTime.hours && currentMinute < startTime.minutes)
-    ) {
+    if (currentTimeInMinutes < startTimeInMinutes) {
       this.handleBeforeWork(chatId, userName, userId, startTime, now);
       return;
     }
 
-    // 퇴근 후
-    const minutesToLeave = BotUtils.getTimeToLeave(endTime);
-    if (minutesToLeave <= 0) {
+    // 퇴근 후 - 수정된 부분!
+    if (currentTimeInMinutes >= endTimeInMinutes) {
       this.handleAfterWork(chatId, userName, userId, endTime, currentHour);
       return;
     }
 
-    // 근무 중
+    // 근무 중 - 정확한 계산
+    const minutesToLeave = endTimeInMinutes - currentTimeInMinutes;
     this.handleDuringWork(chatId, userName, minutesToLeave);
   }
 
   static handleBeforeWork(chatId, userName, userId, startTime, now) {
     const workStart = new Date();
     workStart.setHours(startTime.hours, startTime.minutes, 0, 0);
+    
+    // 만약 시작 시간이 이미 지났다면 내일로 설정
+    if (workStart <= now) {
+      workStart.setDate(workStart.getDate() + 1);
+    }
+    
     const diffMs = workStart - now;
     const minutesToWork = Math.floor(diffMs / (1000 * 60));
     const timeMessage = BotUtils.formatTime(minutesToWork);
 
     if (minutesToWork <= 30) {
-      const message = BotUtils.replaceMessagePlaceholders(
-        messages.beforeWork.soon,
-        {
-          name: userName,
-          time: timeMessage,
-        }
-      );
+      const message = BotUtils.replaceMessagePlaceholders(messages.beforeWork.soon, {
+        name: userName,
+        time: timeMessage
+      });
       bot.sendMessage(chatId, message);
     } else {
       const message = BotUtils.getRandomMessage(messages.beforeWork.early, {
         name: userName,
         time: timeMessage,
-        userId,
+        userId
       });
       bot.sendMessage(chatId, message);
     }
@@ -377,7 +378,7 @@ class WorkTimeManager {
 
   static handleAfterWork(chatId, userName, userId, endTime, currentHour) {
     const hoursSinceWork = currentHour - endTime.hours;
-
+    
     let messageCategory;
     if (hoursSinceWork >= 0 && hoursSinceWork <= 2) {
       messageCategory = messages.afterWork.justLeft;
@@ -387,43 +388,36 @@ class WorkTimeManager {
       messageCategory = messages.afterWork.late;
     }
 
-    const message = BotUtils.getRandomMessage(messageCategory, {
-      name: userName,
-      userId,
-    });
+    const message = BotUtils.getRandomMessage(messageCategory, { name: userName, userId });
     bot.sendMessage(chatId, message);
   }
 
   static handleDuringWork(chatId, userName, minutesToLeave) {
     const timeMessage = BotUtils.formatTime(minutesToLeave);
     const { emoji, comment } = BotUtils.getLeaveTimeEmoji(minutesToLeave);
-
-    bot.sendMessage(
-      chatId,
-      `${emoji} ${userName}님의 퇴근까지 ${timeMessage} 남았습니다!${comment}`
-    );
+    
+    bot.sendMessage(chatId, `${emoji} ${userName}님의 퇴근까지 ${timeMessage} 남았습니다!${comment}`);
   }
 
-  static getWorkScheduleInfo(chatId = null) {
-    const schedule = chatId
-      ? this.getUserWorkSchedule(chatId)
-      : {
-          startTime: WORK_SCHEDULE.START_TIME,
-          endTime: WORK_SCHEDULE.END_TIME,
-        };
-    const startTimeStr = `${schedule.startTime.hours
-      .toString()
-      .padStart(2, "0")}:${schedule.startTime.minutes
-      .toString()
-      .padStart(2, "0")}`;
-    const endTimeStr = `${schedule.endTime.hours
-      .toString()
-      .padStart(2, "0")}:${schedule.endTime.minutes
-      .toString()
-      .padStart(2, "0")}`;
+  // 기존의 getTimeToLeave 함수 제거 - 위에서 직접 계산
+}
 
-    return { startTimeStr, endTimeStr, isDefault: schedule.isDefault };
+// 수정된 BotUtils - getTimeToLeave 함수 수정
+class BotUtils {
+  // ... 기존 함수들 ...
+
+  // 이 함수는 이제 사용하지 않음 - 직접 계산으로 대체
+  static getTimeToLeave(endTime) {
+    const now = new Date();
+    const endDateTime = new Date();
+    endDateTime.setHours(endTime.hours, endTime.minutes, 0, 0);
+    
+    // 이미 퇴근시간이 지났다면 음수 반환 (문제의 원인!)
+    const diffMs = endDateTime - now;
+    return Math.floor(diffMs / (1000 * 60));
   }
+
+  // ... 기존 함수들 ...
 }
 
 // ==================== 운세 관리 클래스 ====================
