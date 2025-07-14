@@ -18,7 +18,7 @@ bot.setMyCommands([
   { command: '/add', description: '📝 추가' },
   { command: '/list', description: '📋 목록' },
   { command: '/done', description: '✅ 완료' },
-  { command: '/time2eave', description: '🏃 퇴근체크' },
+  { command: '/time2leave', description: '🏃 퇴근체크' },
   { command: '/time', description: '⏰ 타이머' },
   { command: '/stop', description: '🛑 중지' },
   { command: '/fortune', description: '🔮 오늘의 운세' },
