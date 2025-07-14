@@ -1,7 +1,8 @@
 const TelegramBot = require("node-telegram-bot-api");
 
 // 봇 토큰 (BotFather에서 받은 토큰)
-const token = "7294426076:AAEZEOfP9pkl2GJQ4pLzv4jWZI7RR_MNc2s";
+// const token = "7294426076:AAEZEOfP9pkl2GJQ4pLzv4jWZI7RR_MNc2s";
+const token = process.env.BOT_TOKEN;
 
 // 봇 생성
 const bot = new TelegramBot(token, { polling: true });
